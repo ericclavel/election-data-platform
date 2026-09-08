@@ -7,3 +7,4 @@ data/samples/*
 __pycache__/
 .ipynb_checkpoints/
 .env
+*.duckdb
