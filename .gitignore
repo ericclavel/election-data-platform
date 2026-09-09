@@ -10,3 +10,4 @@ __pycache__/
 *.duckdb
 *.duckdb.wal
 wget-log
+grain_tests.md
