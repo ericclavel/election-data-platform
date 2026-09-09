@@ -43,28 +43,30 @@ One row appears intended to represent one candidate or vote category within a:
 - party
 - ballot mode
 
-### Validation
+### Grain and Key Validation
 
-The proposed identifying combination:
+The following combination was tested as a likely natural key:
 
 - `year`
 - `state_po`
-- `county_name`
 - `county_fips`
 - `office`
 - `candidate`
 - `party`
 - `mode`
 
-is unique for election years **2000–2020**.
+This combination uniquely identifies records for election years **2000–2020**,
+but does not uniquely identify all records in **2024**.
 
-The same combination is not unique for some records in **2024**.
+Adding `county_name` does not resolve the 2024 collisions.
 
-The 2024 grain collisions have been isolated to North Carolina, South Carolina,
-California, Arizona, and Connecticut and represent several different source
-standardization issues.
+The collisions have been isolated to North Carolina, South Carolina,
+California, Arizona, and Connecticut and result from several different
+source-standardization issues.
 
-See `data_quality_findings.md` for the detailed investigation.
+Therefore, no universally reliable natural key was identified in the raw source.
+
+See `data_quality_findings.md` for the detailed grain and key-collision analysis.
 
 ---
 
@@ -249,3 +251,20 @@ during raw-data inspection.
 | `version` | `BIGINT` | `DATE` | Encoded as `YYYYMMDD` |
 
 No raw source values are modified during the discovery phase.
+
+
+## Missing Value Summary
+
+The raw source uses both SQL `NULL` values and literal `NA` strings to
+represent missing or non-applicable values.
+
+| Column | Representation | Count | Observation |
+|---|---|---:|---|
+| `party` | SQL `NULL` | 501 | Occurs only on non-candidate/status records |
+| `mode` | SQL `NULL` | 2,795 | All observed nulls occur in 2024 |
+| `county_fips` | Literal `NA` | 52 | Occurs on special/non-county reporting records |
+| `candidatevotes` | Literal `NA` | 37 | Field is otherwise numeric |
+
+No SQL `NULL` values were observed in any other columns.
+
+No literal `NA` values were observed in the other string columns checked.

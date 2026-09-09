@@ -257,3 +257,39 @@ the underlying source observations for seven counties.
 
 Root cause characterized as an inconsistent candidate/category
 aggregation during standardization.
+
+
+## Candidate Key Assessment
+
+### Proposed Natural Key
+
+The following combination was tested as a likely natural key:
+
+- `year`
+- `state_po`
+- `county_fips`
+- `office`
+- `candidate`
+- `party`
+- `mode`
+
+### Result
+
+The combination uniquely identifies records for election years 2000–2020.
+
+It does not uniquely identify all 2024 records.
+
+The 2024 failures correspond to documented source-standardization issues in:
+
+- North Carolina
+- South Carolina
+- California
+- Arizona
+- Connecticut
+
+### Conclusion
+
+The raw dataset does not provide a universally reliable natural key.
+
+A surrogate key may be required downstream to uniquely identify physical rows,
+but this does not resolve the underlying semantic grain ambiguity in the 2024 source data.
