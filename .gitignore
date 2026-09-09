@@ -7,3 +7,7 @@ data/samples/*
 __pycache__/
 .ipynb_checkpoints/
 .env
+*.duckdb
+*.duckdb.wal
+wget-log
+grain_tests.md
