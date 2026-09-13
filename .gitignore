@@ -11,3 +11,5 @@ __pycache__/
 *.duckdb.wal
 wget-log
 grain_tests.md
+.csv*
+test_download.csv
