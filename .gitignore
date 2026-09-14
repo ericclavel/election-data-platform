@@ -13,3 +13,4 @@ wget-log
 grain_tests.md
 .csv*
 test_download.csv
+ingest_data_structure_logic.md
