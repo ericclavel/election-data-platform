@@ -1,0 +1,11 @@
+{
+  "dataset_doi": "doi:10.7910/DVN/VOQCHQ",
+  "dataset_version": "20.0",
+  "file_id": 13573089,
+  "file_name": "countypres_2000-2024.csv",
+  "dataverse_checksum_type": "MD5",
+  "dataverse_checksum": "bd6661282936006b4ef4f5ee71418f3e",
+  "local_checksum_type": "SHA256",
+  "local_checksum": "9299583148f5f8264baf50b5d929c260699c46d915909b13ea3c3850918946f8",
+  "retrieved_at": "2026-09-14T16:01:43Z"
+}
