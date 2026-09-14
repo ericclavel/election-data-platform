@@ -47,13 +47,6 @@ DATAVERSE_API_TOKEN=<your-token>
 
 The `.env` file must not be committed to Git.
 
-Before running the ingestion script, load the environment variables into the current shell:
-
-```bash
-set -a
-source .env
-set +a
-```
 
 ### Ingestion Workflow
 
@@ -76,9 +69,13 @@ Source unchanged?
      ↓
    Download original CSV
      ↓
-   Calculate SHA-256
+    Validate file size
      ↓
-   Update current.json
+    Verify Dataverse MD5
+     ↓
+    Calculate local SHA-256
+     ↓
+    Update current.json
 ```
 
 ### Raw Storage
@@ -104,27 +101,43 @@ The ingestion process records two checksums:
 * `dataverse_checksum` — checksum reported by Dataverse for the source file.
 * `local_checksum` — SHA-256 calculated locally from the downloaded raw file.
 
-`current.json` is updated only after a successful download and local checksum generation.
+Before current.json is updated, the downloaded file is validated against:
 
+- expected file size reported by Dataverse
+- MD5 checksum reported by Dataverse
+
+After validation succeeds, the pipeline calculates a local SHA-256 fingerprint of the downloaded raw file and records it in current.json.
 ### Running the Ingestion Script
 
-From the project root:
+Ensure a local `.env` file exists and contains:
+
+```text
+DATAVERSE_API_TOKEN=<your-token>
+```
+
+The ingestion script automatically loads environment variables from `.env`.
+
+From the project root, run:
 
 ```bash
 python ingestion/ingest_data.py
 ```
 
-Expected result when the source has not changed:
+If the currently published Dataverse source matches the locally recorded metadata, ingestion is skipped:
 
 ```text
-Source has not changed. No ingestion needed.
+INFO | Source has not changed. No ingestion needed.
 ```
 
-Example result when a change is detected:
+If a change is detected, the script proceeds with ingestion:
 
 ```text
-Change detected: dataset_version
-Source has changed. Proceeding with ingestion.
+INFO | Change detected: dataset_version (20.0 -> 21.0)
+INFO | Source has changed. Proceeding with ingestion.
+INFO | Validating downloaded file...
+INFO | Downloaded file validation passed.
+INFO | Validating Dataverse checksum...
+INFO | Dataverse checksum validation passed.
 ```
 
 ## Project Structure

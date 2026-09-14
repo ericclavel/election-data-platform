@@ -1,11 +1,15 @@
 from pathlib import Path
 from urllib.parse import urlencode
+from dotenv import load_dotenv
 import urllib.request
 import urllib.error
 import json
 import hashlib
 from datetime import datetime, timezone
 import os
+import logging
+
+load_dotenv()
 
 FILE_PREFIX = "countypres_"
 CURRENT_METADATA_PATH = Path(
@@ -16,7 +20,13 @@ DATAVERSE_BASE_URL = "https://dataverse.harvard.edu"
 DATASET_DOI = "doi:10.7910/DVN/VOQCHQ"
 API_TOKEN = os.environ.get("DATAVERSE_API_TOKEN")
 
+def validate_config():
+    if not API_TOKEN:
+        raise ValueError(
+            "DATAVERSE_API_TOKEN environment variable is not set."
+        )
 
+    
 def build_metadata_url(dataset_doi):
     params = {
         "persistentId": dataset_doi,
@@ -57,6 +67,8 @@ def fetch_dataset_metadata(url, api_token):
 
     return metadata
 
+
+
 def get_remote_source_info(metadata, file_prefix):
     dataset_info = metadata.get("data", {})
     files_info = dataset_info.get("files", [])
@@ -75,6 +87,7 @@ def get_remote_source_info(metadata, file_prefix):
                 "dataset_version": dataset_version,
                 "file_id": data_file.get("id"),
                 "file_name": file_name,
+                "file_size": data_file.get("originalFileSize"),
                 "dataverse_checksum_type": data_file.get("checksum", {}).get("type"),
                 "dataverse_checksum": data_file.get("checksum", {}).get("value"),
             }
@@ -82,6 +95,8 @@ def get_remote_source_info(metadata, file_prefix):
     raise ValueError(
         f"No source file found with prefix: {file_prefix}"
     )
+
+
 
 def load_current_metadata(path):
     if not path.exists():
@@ -91,32 +106,38 @@ def load_current_metadata(path):
         return json.load(file)
 
 
+
 def source_has_changed(remote, current):
     if not current:
-        print("Change detected: no current metadata.")
+        logging.info("Change detected: no current metadata.")
         return True
 
     if remote["file_name"] != current.get("file_name"):
-        print("Change detected: file_name")
+        logging.info("Change detected: file_name")
         return True
 
     if remote["dataset_version"] != current.get("dataset_version"):
-        print("Change detected: dataset_version")
+        logging.info(
+            "Change detected: dataset_version (%s -> %s)",
+            current.get("dataset_version"),
+            remote["dataset_version"],
+        )
         return True
 
     if remote["file_id"] != current.get("file_id"):
-        print("Change detected: file_id")
+        logging.info("Change detected: file_id")
         return True
 
     if remote["dataverse_checksum_type"] != current.get("dataverse_checksum_type"):
-        print("Change detected: dataverse_checksum_type")
+        logging.info("Change detected: dataverse_checksum_type")
         return True
 
     if remote["dataverse_checksum"] != current.get("dataverse_checksum"):
-        print("Change detected: dataverse_checksum")
+        logging.info("Change detected: dataverse_checksum")
         return True
 
     return False
+
 
 
 def request_signed_url(file_id, api_token):
@@ -168,6 +189,52 @@ def build_destination_path(dataset_version, file_name):
     return RAW_DATA_DIR / dataset_version / file_name
 
 
+def validate_download(path, expected_size):
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Downloaded file does not exist: {path}"
+        )
+
+    if not path.is_file():
+        raise ValueError(
+            f"Download path is not a file: {path}"
+        )
+
+    actual_size = path.stat().st_size
+
+    if actual_size == 0:
+        raise ValueError(
+            f"Downloaded file is empty: {path}"
+        )
+
+    if expected_size is not None and actual_size != expected_size:
+        raise ValueError(
+            f"Downloaded file size mismatch: "
+            f"expected {expected_size} bytes, got {actual_size} bytes."
+        )
+
+
+def calculate_md5(path):
+    md5_hash = hashlib.md5()
+
+    with path.open("rb") as file:
+        for byte_block in iter(lambda: file.read(4096), b""):
+            md5_hash.update(byte_block)
+
+    return md5_hash.hexdigest()
+
+
+def validate_checksum(path, expected_checksum):
+    actual_checksum = calculate_md5(path)
+
+    if actual_checksum != expected_checksum:
+        raise ValueError(
+            f"Checksum mismatch: "
+            f"expected {expected_checksum}, got {actual_checksum}"
+        )
+
+
+    
 def download_file(signed_url, destination_path):
     destination_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -213,6 +280,8 @@ def download_file(signed_url, destination_path):
             f"Could not write downloaded file to {destination_path}: {error}"
         ) from error
 
+
+
 def calculate_sha256(path):
     sha256_hash = hashlib.sha256()
 
@@ -222,18 +291,29 @@ def calculate_sha256(path):
 
     return sha256_hash.hexdigest()
 
+
+
 def save_current_metadata(path, metadata):
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as file:
         json.dump(metadata, file, indent=2)
-    
+
+
+def configure_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+
+
 def main():
+    configure_logging()
+    validate_config()
+
     dataverse_api_url = build_metadata_url(DATASET_DOI)
 
-
-    if not API_TOKEN:
-        raise ValueError("DATAVERSE_API_TOKEN environment variable is not set.")
 
     metadata = fetch_dataset_metadata(
         dataverse_api_url,
@@ -245,15 +325,16 @@ def main():
         FILE_PREFIX
     )
 
+
     current_metadata = load_current_metadata(
         CURRENT_METADATA_PATH
     )
 
     if source_has_changed(remote_source_info, current_metadata):
-        print("Source has changed. Proceeding with ingestion.")
+        logging.info("Source has changed. Proceeding with ingestion.")
         
     else:
-        print("Source has not changed. No ingestion needed.")
+        logging.info("Source has not changed. No ingestion needed.")
         return
 
     signed_url = request_signed_url(
@@ -271,6 +352,19 @@ def main():
         destination_path
     )
 
+    logging.info("Validating downloaded file...")
+    validate_download(
+    destination_path,
+    remote_source_info["file_size"]
+    )
+    logging.info("Downloaded file validation passed.")
+
+    logging.info("Validating Dataversechecksum...")
+    validate_checksum(
+        destination_path,
+        remote_source_info["dataverse_checksum"]
+    )
+    logging.info("Dataverse checksum validation passed.")
     local_checksum = calculate_sha256(destination_path)
 
     new_current_metadata = {
