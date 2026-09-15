@@ -107,7 +107,13 @@ Before current.json is updated, the downloaded file is validated against:
 - MD5 checksum reported by Dataverse
 
 After validation succeeds, the pipeline calculates a local SHA-256 fingerprint of the downloaded raw file and records it in current.json.
-### Running the Ingestion Script
+
+
+## Docker
+
+Docker provides a reproducible Python environment for running the ingestion pipeline. The image contains Python, `uv`, project dependencies, and the ingestion script, while raw data and ingestion metadata remain on the host.
+
+### Build and Run
 
 Ensure a local `.env` file exists and contains:
 
@@ -115,13 +121,15 @@ Ensure a local `.env` file exists and contains:
 DATAVERSE_API_TOKEN=<your-token>
 ```
 
-The ingestion script automatically loads environment variables from `.env`.
-
-From the project root, run:
+Run the ingestion service from the project root:
 
 ```bash
-python ingestion/ingest_data.py
+docker compose up --build ingestion
 ```
+
+This builds the image when needed, starts the ingestion container, runs the ingestion script, and exits when ingestion completes.
+
+### Ingestion Output
 
 If the currently published Dataverse source matches the locally recorded metadata, ingestion is skipped:
 
@@ -129,7 +137,7 @@ If the currently published Dataverse source matches the locally recorded metadat
 INFO | Source has not changed. No ingestion needed.
 ```
 
-If a change is detected, the script proceeds with ingestion:
+If a change is detected, the pipeline proceeds with download and validation:
 
 ```text
 INFO | Change detected: dataset_version (20.0 -> 21.0)
@@ -139,6 +147,37 @@ INFO | Downloaded file validation passed.
 INFO | Validating Dataverse checksum...
 INFO | Dataverse checksum validation passed.
 ```
+
+### Environment Variables
+
+The Dataverse API token is stored in `.env` as `DATAVERSE_API_TOKEN` and loaded into the container at runtime through Docker Compose.
+
+The `.env` file is excluded from the Docker build context using `.dockerignore` and is not included in the image. Required environment variables are documented in `.env.example`.
+
+### Persistent Data
+
+The project data directory is mounted into the container:
+
+```yaml
+volumes:
+  - ./data:/code/data
+```
+
+This maps:
+
+```text
+host ./data
+    ↕
+container /code/data
+```
+
+Raw data and ingestion metadata therefore persist on the host outside the container:
+
+```text
+data/raw/
+data/metadata/
+```
+
 
 ## Project Structure
 
@@ -153,3 +192,5 @@ election-data-platform/
 ├── .env.example
 └── README.md
 ```
+
+
