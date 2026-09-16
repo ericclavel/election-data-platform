@@ -4,159 +4,183 @@
 
 ### Goal
 
-Build a scalable historical U.S. election data platform capable of standardizing election results across elections, offices, and changing geographic boundaries.
+Build a scalable historical U.S. election data platform capable of ingesting, validating, standardizing, and analyzing election results across election types, offices, and changing geographic boundaries.
 
-### V1 Scope
+### Project Status
 
-Presidential election results by county.
+The platform is currently in the source-ingestion and discovery phase.
 
-### Initial Time Range
+Implemented:
 
-2000–2024.
+* Reproducible source ingestion
+* Source-version detection
+* Raw-file preservation
+* File-size and upstream checksum validation
+* Local SHA-256 fingerprinting
+* Persistent ingestion metadata
+* Docker-based execution
+* Dataset-level source, schema, and data-quality documentation
 
-### Future Scope
+Not yet implemented:
 
-* Congressional elections
+* Shared multi-source ingestion configuration
+* Analytical storage
+* Staging and transformation models
+* Cross-dataset standardization
+* Geographic boundary integration
+* Analytical or serving layers
+
+### Planned Scope
+
+The platform is intended to support multiple election and geographic datasets, including:
+
+* Presidential elections
+* U.S. congressional elections
 * State legislative elections
+* Precinct-level election results
 * District boundary histories
 * Census geography
 * Redistricting analysis
 
-## Raw Data Ingestion
+## Data Sources
 
-### Dataverse Prerequisites
+Dataset-specific documentation is maintained under `docs/sources/`.
 
-A Harvard Dataverse account is required.
+Each dataset directory contains:
 
-The account profile must contain:
+* `README.md` — source identity, provenance, coverage, storage, and ingestion notes
+* `source_schema.md` — raw schema and structural observations
+* `data_quality_findings.md` — source-specific quality findings and unresolved issues
 
-* Name
-* Email
-* Institution
-* Position
+Current source documentation:
 
-The MIT dataset uses Dataverse Guestbook ID 458, which requires all four fields before a download request can be authorized.
+* [County Presidential Election Returns](docs/sources/mit_election_lab/county_presidential/README.md)
+* [U.S. House Election Returns](docs/sources/mit_election_lab/us_house/README.md)
 
-### Configuration
-
-Generate a Harvard Dataverse API token and store it in the local `.env` file:
+Reusable dataset documentation templates are maintained under:
 
 ```text
-DATAVERSE_API_TOKEN=<your-token>
+docs/templates/dataset/
 ```
 
-The `.env` file must not be committed to Git.
+## Raw Data Ingestion
 
+### Ingestion Principles
 
-### Ingestion Workflow
+The ingestion layer is responsible for acquiring and validating source data while preserving original source files without transformation.
+
+Schema normalization, type casting, cleaning, harmonization, and analytical modeling occur downstream.
+
+Detailed ingestion behavior, validation rules, logging, failure handling, and source-change detection are documented in the [Ingestion README](ingestion/README.md).
+
+### General Ingestion Workflow
 
 ```text
-Dataset DOI
-    ↓
-Query latest published version
-    ↓
+Configured source
+      ↓
+Query current published source metadata
+      ↓
 Locate target source file
-    ↓
-Compare against current.json
-    ↓
+      ↓
+Compare against locally recorded metadata
+      ↓
 Source unchanged?
 ├── Yes → Exit
 └── No
      ↓
-   Submit guestbook request
+Acquire original source file
      ↓
-   Receive temporary signed URL
+Validate downloaded file
      ↓
-   Download original CSV
+Verify upstream checksum
      ↓
-    Validate file size
+Calculate local SHA-256 fingerprint
      ↓
-    Verify Dataverse MD5
+Persist raw source
      ↓
-    Calculate local SHA-256
-     ↓
-    Update current.json
+Update local ingestion metadata
 ```
+
+Source-specific access requirements and ingestion behavior are documented in each dataset README.
 
 ### Raw Storage
 
+Raw source files are organized by source organization, dataset, and upstream dataset version:
+
 ```text
-data/raw/mit_election_lab/county_presidential/
-└── 20.0/
-    └── countypres_2000-2024.csv
+data/raw/
+└── <source>/
+    └── <dataset>/
+        └── <dataset_version>/
+            └── <source_file>
 ```
 
-Raw source files are stored without transformation. Schema normalization, type casting, cleaning, and other transformations occur downstream.
+Raw files are preserved without transformation.
 
 ### Ingestion Metadata
 
+Successful ingestion state is recorded separately from raw source data:
+
 ```text
-data/metadata/mit_election_lab/county_presidential/current.json
+data/metadata/
+└── <source>/
+    └── <dataset>/
+        └── current.json
 ```
 
-`current.json` records the most recent source version that was successfully downloaded and validated locally.
+`current.json` represents the most recent source version successfully downloaded and validated locally.
 
-The ingestion process records two checksums:
+The ingestion process records both:
 
-* `dataverse_checksum` — checksum reported by Dataverse for the source file.
-* `local_checksum` — SHA-256 calculated locally from the downloaded raw file.
+* the checksum reported by the upstream source
+* a local SHA-256 fingerprint calculated from the downloaded file
 
-Before current.json is updated, the downloaded file is validated against:
-
-- expected file size reported by Dataverse
-- MD5 checksum reported by Dataverse
-
-After validation succeeds, the pipeline calculates a local SHA-256 fingerprint of the downloaded raw file and records it in current.json.
-
+Local ingestion metadata is updated only after required validation succeeds.
 
 ## Docker
 
-Docker provides a reproducible Python environment for running the ingestion pipeline. The image contains Python, `uv`, project dependencies, and the ingestion script, while raw data and ingestion metadata remain on the host.
+Docker provides the reproducible execution environment for the platform.
+
+Application dependencies are contained within Docker images, while raw data and ingestion metadata remain outside disposable containers.
+
+### Prerequisites
+
+* Git
+* Docker
+* Docker Compose
+* Required credentials for configured data sources
+
+Development is currently performed using WSL2/Ubuntu on Windows, but WSL is not intended to be a platform requirement.
+
+### Configuration
+
+Create a local `.env` file from the provided example:
+
+```bash
+cp .env.example .env
+```
+
+Populate the required source credentials documented in `.env.example`.
+
+The `.env` file must not be committed to Git.
+
+It is excluded from the Docker build context using `.dockerignore` and supplied to containers only at runtime.
 
 ### Build and Run
 
-Ensure a local `.env` file exists and contains:
-
-```text
-DATAVERSE_API_TOKEN=<your-token>
-```
-
-Run the ingestion service from the project root:
+From the project root:
 
 ```bash
 docker compose up --build ingestion
 ```
 
-This builds the image when needed, starts the ingestion container, runs the ingestion script, and exits when ingestion completes.
+This is the platform-level entry point for raw-data ingestion.
 
-### Ingestion Output
-
-If the currently published Dataverse source matches the locally recorded metadata, ingestion is skipped:
-
-```text
-INFO | Source has not changed. No ingestion needed.
-```
-
-If a change is detected, the pipeline proceeds with download and validation:
-
-```text
-INFO | Change detected: dataset_version (20.0 -> 21.0)
-INFO | Source has changed. Proceeding with ingestion.
-INFO | Validating downloaded file...
-INFO | Downloaded file validation passed.
-INFO | Validating Dataverse checksum...
-INFO | Dataverse checksum validation passed.
-```
-
-### Environment Variables
-
-The Dataverse API token is stored in `.env` as `DATAVERSE_API_TOKEN` and loaded into the container at runtime through Docker Compose.
-
-The `.env` file is excluded from the Docker build context using `.dockerignore` and is not included in the image. Required environment variables are documented in `.env.example`.
+As additional sources are integrated, the ingestion implementation may expand while preserving this top-level execution workflow.
 
 ### Persistent Data
 
-The project data directory is mounted into the container:
+The project data directory is mounted into the ingestion environment:
 
 ```yaml
 volumes:
@@ -171,13 +195,12 @@ host ./data
 container /code/data
 ```
 
-Raw data and ingestion metadata therefore persist on the host outside the container:
+Raw data and ingestion metadata therefore persist independently of container lifecycle:
 
 ```text
 data/raw/
 data/metadata/
 ```
-
 
 ## Project Structure
 
@@ -186,11 +209,35 @@ election-data-platform/
 ├── data/
 │   ├── raw/
 │   └── metadata/
+│
+├── docs/
+│   ├── sources/
+│   │   └── <source>/
+│   │       └── <dataset>/
+│   │           ├── README.md
+│   │           ├── source_schema.md
+│   │           └── data_quality_findings.md
+│   │
+│   └── templates/
+│       └── dataset/
+│           ├── README.md
+│           ├── source_schema.md
+│           └── data_quality_findings.md
+│
 ├── ingestion/
-│   └── ingest_data.py
+│   ├── ingest_data.py
+│   └── README.md
+│
 ├── notebooks/
 ├── .env.example
+├── .dockerignore
+├── Dockerfile
+├── compose.yaml
 └── README.md
 ```
 
+## Development Approach
 
+The platform is being developed incrementally.
+
+New data sources are inspected and documented before downstream abstractions are introduced. Shared ingestion, staging, and modeling patterns are generalized only after similarities and differences across multiple real datasets have been identified.
