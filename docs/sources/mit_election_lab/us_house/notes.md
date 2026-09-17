@@ -223,3 +223,47 @@ fusion_ticket
 - true: 2,677 rows
 - Clean boolean field syntactically
 - Exact MEDSL definition should still be confirmed from the codebook
+
+
+
+A row represents a reported candidate/result line within a House election event, but the available descriptive fields do not always uniquely identify that reporting line.
+
+- 0 exact duplicates across all 20 source columns
+- Every physical row in the file is unique
+
+The descriptive-key ambiguity is isolated to write-in records.
+For all writein = FALSE rows, this combination is unique:
+    year
+    state
+    district
+    stage
+    runoff
+    special
+    candidate
+    party
+    writein
+    mode
+
+    One row represents one candidate-party result line within a particular House election event.
+
+- Multi-party candidate rows: strongly associated with fusion/cross-endorsement,
+  especially New York, but not exclusively New York.
+
+- fusion_ticket inconsistency:
+  observed only for 2024 New York in our current test.
+
+
+Grain: One row represents one candidate-party result line within a specific House election event.
+
+With one documented exception/qualification:
+
+Generic WRITEIN result lines can repeat with identical descriptive fields and differ only by candidatevotes, so the available descriptive fields do not form a universally reliable natural key.
+
+Data quality finding: totalvotes is not guaranteed to be constant across every row belonging to the same election event.
+    -For these five 2018 Georgia contests, named-candidate rows carry a totalvotes value excluding write-ins, while the WRITEIN row carries a totalvotes value including the write-in votes.
+
+
+
+    2018 Maine CD-2 contains internally inconsistent ranked-choice values: candidate vote totals correspond to an earlier tabulation, while totalvotes corresponds to the later final tabulation.
+        candidatevotes → earlier 11/15 tabulation
+        totalvotes     → later final 11/21 continuing-ballot total
