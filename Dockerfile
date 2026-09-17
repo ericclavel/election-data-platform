@@ -5,7 +5,7 @@ WORKDIR /code
 ENV PATH="/code/.venv/bin:$PATH"
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY ingestion/ingest_data.py ./ingest_data.py
 ENTRYPOINT ["python", "ingest_data.py"]
