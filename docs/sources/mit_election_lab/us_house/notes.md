@@ -267,3 +267,10 @@ Data quality finding: totalvotes is not guaranteed to be constant across every r
     2018 Maine CD-2 contains internally inconsistent ranked-choice values: candidate vote totals correspond to an earlier tabulation, while totalvotes corresponds to the later final tabulation.
         candidatevotes → earlier 11/15 tabulation
         totalvotes     → later final 11/21 continuing-ballot total
+
+
+    Generic write-in normalization can be lossy. Distinct named write-in candidates in the underlying election results may be collapsed into the generic WRITEIN category, and the resulting candidatevotes rows do not necessarily sum to totalvotes.
+
+
+    Generic WRITEIN normalization can cause SUM(candidatevotes) to understate totalvotes, because multiple distinct write-in candidates may be collapsed or omitted in the standardized rows.
+    
