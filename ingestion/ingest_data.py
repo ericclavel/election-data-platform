@@ -65,7 +65,6 @@ def fetch_dataset_metadata(url, api_token):
             f"Could not connect to Dataverse: {error.reason}"
         ) from error
 
-    return metadata
 
 
 
