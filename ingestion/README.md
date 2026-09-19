@@ -10,6 +10,7 @@ Ingestion is intentionally separated from downstream schema normalization, clean
 
 The ingestion layer is responsible for:
 
+* Loading configured datasets
 * Querying upstream source metadata
 * Identifying the current published source version
 * Locating the expected source file
@@ -24,6 +25,52 @@ The ingestion layer is responsible for:
 
 The ingestion layer does not modify or normalize raw source values.
 
+## Dataset Configuration
+
+Datasets are defined in:
+
+```text
+ingestion/config.py
+```
+
+Each dataset uses a `DatasetConfig` dataclass containing the configuration required by the shared ingestion process.
+
+Current configuration fields include:
+
+```text
+source
+dataset
+dataset_doi
+file_prefix
+```
+
+Dataset-specific storage paths are derived from the source and dataset names rather than being repeated in each configuration.
+
+For example:
+
+```text
+data/raw/<source>/<dataset>/
+data/metadata/<source>/<dataset>/current.json
+```
+
+Configured datasets are collected in `DATASETS`.
+
+Conceptually:
+
+```text
+DatasetConfig
+      ↓
+individual dataset configurations
+      ↓
+DATASETS
+      ↓
+main()
+      ↓
+ingest_dataset(config)
+```
+
+This allows the same ingestion workflow to process multiple datasets without duplicating ingestion logic.
+
 ## Execution
 
 The ingestion service is run through Docker Compose from the project root:
@@ -36,10 +83,50 @@ Docker provides the Python environment, dependencies, and ingestion code.
 
 Environment variables are supplied to the container at runtime through the project's `.env` file.
 
-## Ingestion Workflow
+The container runs using the host development user's UID and GID so files created through the bind-mounted `data/` directory remain writable by the host user rather than being created as root-owned files.
+
+## Multi-Dataset Orchestration
+
+`main()` acts as the application-level ingestion orchestrator.
+
+It performs shared startup configuration and then iterates through the configured datasets:
 
 ```text
-Configured source
+main()
+  ↓
+configure logging
+  ↓
+validate shared configuration
+  ↓
+iterate through DATASETS
+  ↓
+ingest_dataset(config)
+```
+
+`ingest_dataset(config)` performs the complete ingestion workflow for one dataset.
+
+If one dataset has not changed, that dataset exits its ingestion function successfully and processing continues to the next configured dataset.
+
+For example:
+
+```text
+county_presidential
+  ↓
+unchanged → skip
+
+us_house
+  ↓
+changed → ingest
+```
+
+This allows each configured dataset to maintain and evaluate its source state independently.
+
+## Ingestion Workflow
+
+For each configured dataset:
+
+```text
+Dataset configuration
       ↓
 Query current published source metadata
       ↓
@@ -50,7 +137,7 @@ Load locally recorded source metadata
 Compare remote and local source state
       ↓
 Source unchanged?
-├── Yes → Exit successfully
+├── Yes → Return successfully for this dataset
 └── No
      ↓
 Request source-file access
@@ -66,11 +153,13 @@ Calculate local SHA-256 fingerprint
 Persist validated raw source
      ↓
 Update local ingestion metadata
+     ↓
+Continue to next configured dataset
 ```
 
 ## Source Change Detection
 
-Each source maintains local metadata describing the most recently validated upstream source.
+Each dataset maintains local metadata describing the most recently validated upstream source.
 
 The ingestion process compares the current upstream metadata against the locally recorded state.
 
@@ -82,15 +171,26 @@ Relevant comparison fields currently include:
 * Upstream checksum type
 * Upstream checksum value
 
-If no relevant source metadata has changed, ingestion exits without downloading the file again.
+If no relevant source metadata has changed, ingestion skips downloading that dataset again.
 
 Example:
 
 ```text
+INFO | Checking dataset: county_presidential
 INFO | Source has not changed. No ingestion needed.
 ```
 
-If a change is detected, ingestion proceeds with download and validation.
+If no local metadata exists, the dataset is treated as requiring ingestion.
+
+Example:
+
+```text
+INFO | Checking dataset: us_house
+INFO | Change detected: no current metadata.
+INFO | Source has changed. Proceeding with ingestion.
+```
+
+If existing source metadata has changed, ingestion also proceeds with download and validation.
 
 Example:
 
@@ -169,6 +269,8 @@ Local ingestion metadata is stored under:
 data/metadata/<source>/<dataset>/current.json
 ```
 
+Each dataset maintains its own `current.json`.
+
 The metadata record represents the most recent upstream source that was successfully downloaded and validated locally.
 
 A typical metadata record contains information such as:
@@ -208,30 +310,34 @@ The ingestion layer should not convert source formats simply to make downstream 
 
 ## Expected Logging
 
+Because ingestion processes datasets independently, logs identify the dataset currently being checked.
+
 ### No Source Change
 
-A normal no-op ingestion run should resemble:
+A normal multi-dataset no-op run may resemble:
 
 ```text
+INFO | Checking dataset: county_presidential
+INFO | Source has not changed. No ingestion needed.
+INFO | Checking dataset: us_house
 INFO | Source has not changed. No ingestion needed.
 ```
 
-This indicates that the upstream source was checked successfully and matches the locally recorded state.
+This indicates that both upstream sources were checked successfully and match their locally recorded states.
 
 ### Source Change Detected
 
 A successful update path may resemble:
 
 ```text
-INFO | Change detected: dataset_version (20.0 -> 21.0)
+INFO | Checking dataset: us_house
+INFO | Change detected: no current metadata.
 INFO | Source has changed. Proceeding with ingestion.
 INFO | Validating downloaded file...
 INFO | Downloaded file validation passed.
 INFO | Validating Dataverse checksum...
 INFO | Dataverse checksum validation passed.
 ```
-
-Additional logging may be added as ingestion expands to multiple sources.
 
 ## Failure Behavior
 
@@ -248,7 +354,7 @@ Failures may include:
 * Checksum mismatches
 * Invalid or incomplete source metadata
 
-A failed ingestion must not update `current.json`.
+A failed ingestion must not update that dataset's `current.json`.
 
 This ensures that locally recorded ingestion state always represents a source file that completed the required validation process.
 
@@ -288,19 +394,21 @@ data_quality_findings.md
 
 The ingestion README documents shared ingestion behavior rather than duplicating source-specific metadata.
 
-## Adding New Sources
+## Adding New Datasets
 
-As new datasets are introduced, the ingestion architecture should favor reuse of shared behavior rather than creating independent implementations for each source.
+New datasets should be added through the shared configuration system rather than by creating independent ingestion implementations.
 
-Source-specific configuration may include:
+For datasets compatible with the existing Dataverse ingestion workflow, adding a dataset primarily requires defining a new `DatasetConfig` instance and including it in `DATASETS`.
 
-* Dataset identifier or DOI
+Current per-dataset configuration includes:
+
+* Source identifier
+* Dataset identifier
+* Dataset DOI
 * Source-file selector
-* Raw-data destination
-* Metadata destination
-* Authentication requirements
-* Source-specific access behavior
 
-Shared behavior such as metadata comparison, downloading, validation, checksum verification, fingerprinting, and state updates should remain reusable wherever possible.
+Shared behavior such as metadata retrieval, metadata comparison, downloading, validation, checksum verification, fingerprinting, and state updates remains reusable across configured datasets.
 
-The exact multi-source ingestion design will be generalized after multiple real datasets have been inspected and their differences are understood.
+Source-specific interpretation of downloaded data remains outside the shared ingestion layer.
+
+Additional ingestion abstractions should be introduced only when differences observed across real sources demonstrate that they are necessary.

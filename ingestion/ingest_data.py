@@ -385,9 +385,9 @@ def main():
     configure_logging()
     validate_config()
 
-for config in DATASETS:
-    logging.info("Checking dataset: %s", config.dataset)
-    ingest_dataset(config)
+    for config in DATASETS:
+        logging.info("Checking dataset: %s", config.dataset)
+        ingest_dataset(config)
 
 
 if __name__ == "__main__":
