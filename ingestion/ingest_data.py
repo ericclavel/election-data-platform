@@ -1,6 +1,7 @@
 from pathlib import Path
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from config import DATASETS
 import urllib.request
 import urllib.error
 import json
@@ -11,13 +12,7 @@ import logging
 
 load_dotenv()
 
-FILE_PREFIX = "countypres_"
-CURRENT_METADATA_PATH = Path(
-    "data/metadata/mit_election_lab/county_presidential/current.json"
-)
-RAW_DATA_DIR = Path("data/raw/mit_election_lab/county_presidential")
 DATAVERSE_BASE_URL = "https://dataverse.harvard.edu"
-DATASET_DOI = "doi:10.7910/DVN/VOQCHQ"
 API_TOKEN = os.environ.get("DATAVERSE_API_TOKEN")
 
 def validate_config():
@@ -65,7 +60,6 @@ def fetch_dataset_metadata(url, api_token):
             f"Could not connect to Dataverse: {error.reason}"
         ) from error
 
-    return metadata
 
 
 
@@ -182,11 +176,12 @@ def request_signed_url(file_id, api_token):
         raise RuntimeError(
             f"Could not connect to Dataverse: {error.reason}"
         ) from error
+    
 
     
 
-def build_destination_path(dataset_version, file_name):
-    return RAW_DATA_DIR / dataset_version / file_name
+def build_destination_path(raw_data_dir,dataset_version, file_name):
+    return raw_data_dir / dataset_version / file_name
 
 
 def validate_download(path, expected_size):
@@ -308,29 +303,29 @@ def configure_logging():
 
 
 
-def main():
-    configure_logging()
-    validate_config()
-
-    dataverse_api_url = build_metadata_url(DATASET_DOI)
-
+def ingest_dataset(config):
+    dataverse_api_url = build_metadata_url(
+        config.dataset_doi
+    )
 
     metadata = fetch_dataset_metadata(
         dataverse_api_url,
-        API_TOKEN
+        API_TOKEN,
     )
 
     remote_source_info = get_remote_source_info(
         metadata,
-        FILE_PREFIX
+        config.file_prefix,
     )
-
 
     current_metadata = load_current_metadata(
-        CURRENT_METADATA_PATH
+        config.current_metadata_path
     )
 
-    if source_has_changed(remote_source_info, current_metadata):
+    if source_has_changed(
+        remote_source_info,
+        current_metadata
+    ):
         logging.info("Source has changed. Proceeding with ingestion.")
         
     else:
@@ -343,6 +338,7 @@ def main():
     )
 
     destination_path = build_destination_path(
+        config.raw_data_dir,
         remote_source_info["dataset_version"],
         remote_source_info["file_name"]
     )
@@ -359,7 +355,7 @@ def main():
     )
     logging.info("Downloaded file validation passed.")
 
-    logging.info("Validating Dataversechecksum...")
+    logging.info("Validating Dataverse checksum...")
     validate_checksum(
         destination_path,
         remote_source_info["dataverse_checksum"]
@@ -368,7 +364,7 @@ def main():
     local_checksum = calculate_sha256(destination_path)
 
     new_current_metadata = {
-        "dataset_doi": DATASET_DOI,
+        "dataset_doi": config.dataset_doi,
         "dataset_version": remote_source_info["dataset_version"],
         "file_id": remote_source_info["file_id"],
         "file_name": remote_source_info["file_name"],
@@ -380,9 +376,19 @@ def main():
     }
 
     save_current_metadata(
-        CURRENT_METADATA_PATH,
+        config.current_metadata_path,
         new_current_metadata
     )
+
+
+def main():
+    configure_logging()
+    validate_config()
+
+    for config in DATASETS:
+        logging.info("Checking dataset: %s", config.dataset)
+        ingest_dataset(config)
+
 
 if __name__ == "__main__":
     main()
