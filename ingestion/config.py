@@ -46,7 +46,7 @@ US_HOUSE = DatasetConfig(
 
 
 
-Datasets = [
+DATASETS = [
     COUNTY_PRESIDENTIAL,
     US_HOUSE,
 ]
