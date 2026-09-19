@@ -208,7 +208,15 @@ data/metadata/
 election-data-platform/
 ├── data/
 │   ├── raw/
+│   │   └── <source>/
+│   │       └── <dataset>/
+│   │           └── <dataset_version>/
+│   │               └── <source_file>
+│   │
 │   └── metadata/
+│       └── <source>/
+│           └── <dataset>/
+│               └── current.json
 │
 ├── docs/
 │   ├── sources/
@@ -225,14 +233,19 @@ election-data-platform/
 │           └── data_quality_findings.md
 │
 ├── ingestion/
+│   ├── config.py
 │   ├── ingest_data.py
 │   └── README.md
 │
 ├── notebooks/
+│
 ├── .env.example
 ├── .dockerignore
+├── .gitignore
 ├── Dockerfile
-├── compose.yaml
+├── docker-compose.yaml
+├── pyproject.toml
+├── uv.lock
 └── README.md
 ```
 
