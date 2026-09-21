@@ -132,21 +132,80 @@ distinct non-null values: 2,584
 writein = true + candidate NULL
 → generic/unnamed write-in result
 
-party_detail:
+party_detailed:
+- type: VARCHAR
+- null_count: 627
+- distinct non-null values: 195
+- contains major parties, minor parties, historical parties,
+  affiliation-status labels, combined/fusion labels, and reporting labels
+- contains semantically similar but differently encoded values
+  (for example DEMOCRAT vs DEMOCRATIC)
+- should be preserved as raw source data rather than normalized during ingestion
 
 writein:
+- type: BOOLEAN
+- false: 3,473 rows
+- true: 472 rows
+- no apparent NULL values
+- of the 472 write-in rows:
+  - 423 have candidate = NULL
+  - 49 have a populated candidate value
+- writein = true therefore includes both unnamed/generic write-in totals
+  and specifically named write-in candidates
 
 mode:
+type: VARCHAR
+distinct raw values: 2
+
+total:
+- 3,629 rows
+- 1976–2021
+
+TOTAL:
+- 316 rows
+- 2022–2024
+
 
 candidatevotes:
+type: DOUBLE
+null_count: 0
+range: 1–9,036,252
+fractional values: 0
 
 totalvotes:
+totalvotes:
+- type: DOUBLE
+- null_count: 0
+- range: 1–15,348,846
+- fractional values: 0
 
 unofficial:
+unofficial:
+- type: BOOLEAN
+- false: 3,924 rows
+- true: 21 rows
+- true values occur across 9 year/state/stage/special groups
+- unofficial is a meaningful source flag, not a constant
 
 version:
+version:
+- type: VARCHAR
+- null_count: 0
+- 4 distinct raw values
+- appears to represent source revision/update metadata
+- formatting is inconsistent (YYYYMMDD and MM/DD/YY)
+- version can differ within the same election year
+- in 2024, regular contests use 11/20/25 while the California and
+  Nebraska special-election records use 20241212
+- preserve as raw metadata rather than interpreting it as a numeric field
 
 party_simplified:
+- type: VARCHAR
+- values: OTHER, DEMOCRAT, REPUBLICAN, LIBERTARIAN, NULL
+- only 2 NULL rows
+- both NULL rows are non-party reporting categories
+- source-provided broad classification should be preserved separately
+  from party_detailed
 
 
 *working event key- year + state + stage + special
