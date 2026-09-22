@@ -172,14 +172,14 @@ null_count: 0
 range: 1–9,036,252
 fractional values: 0
 
-totalvotes:
+
 totalvotes:
 - type: DOUBLE
 - null_count: 0
 - range: 1–15,348,846
 - fractional values: 0
 
-unofficial:
+
 unofficial:
 - type: BOOLEAN
 - false: 3,924 rows
@@ -187,7 +187,7 @@ unofficial:
 - true values occur across 9 year/state/stage/special groups
 - unofficial is a meaningful source flag, not a constant
 
-version:
+
 version:
 - type: VARCHAR
 - null_count: 0
@@ -208,4 +208,65 @@ party_simplified:
   from party_detailed
 
 
-*working event key- year + state + stage + special
+*working event grain:
+- identified by year + state + stage + special
+- 862 event groups
+- totalvotes is consistent within every event group
+- no groups contain multiple distinct totalvotes values
+- Generally groups Senate election events correctly, but is not universally unique.
+At least one known exception is Louisiana 2002, where multiple election rounds
+share the same event descriptors.
+-Row-level findings:
+- 3,945 total rows
+- no exact duplicate rows
+- every raw row is distinct across the full set of columns
+- descriptive fields alone are not always sufficient to uniquely identify a row
+- unnamed write-in rows can collide on candidate/party/writein/mode
+- Louisiana 2002 is the only observed named-candidate case where
+  multiple election rounds are not distinguishable by the event fields
+
+  year
++ state
++ stage
++ special
++ candidate
++ party_detailed
++ writein
++ mode
++ candidatevotes
+  -These fields do form a unique row identifier.
+  - The raw rows are unique.
+- A descriptive natural key without candidatevotes is not always available.
+- Adding candidatevotes makes the rows unique.
+- candidatevotes should still be treated as a measure, not as a true identity field.
+
+
+Data quality finding: 2002 Louisiana contains multiple election rounds that cannot be
+distinguished from the available stage/special fields.
+
+Mary Landrieu and Suzanne Haik Terrell each appear twice with different
+candidate vote totals corresponding to the November 5 election and
+December 7 runoff.
+
+Both rounds are encoded stage='gen', special=false, and mode='total'.
+
+The source therefore does not provide enough fields to construct a
+universally unique election-event key from year + state + stage + special.
+
+Unnamed write-in rows:
+- candidate = NULL
+- party_detailed = NULL
+- writein = true
+- multiple such rows can occur within the same election event
+- within every observed repeated group, each row has a distinct candidatevotes value
+- therefore the rows are distinct in the source, but cannot be uniquely
+  identified using descriptive candidate/party fields alone
+
+
+Vote integrity:
+- candidatevotes never exceeds totalvotes
+- within every year + state + stage + special group,
+  SUM(candidatevotes) = totalvotes
+- vote totals are internally consistent
+- arithmetic consistency does not guarantee that the event key
+  represents exactly one real-world election round
