@@ -1,0 +1,11 @@
+{
+  "dataset_doi": "doi:10.7910/DVN/PEJ5QU",
+  "dataset_version": "8.0",
+  "file_id": 13887039,
+  "file_name": "1976-2024-senate-state.csv",
+  "dataverse_checksum_type": "MD5",
+  "dataverse_checksum": "0f8b51cf0f77a2ef0bff992f7a64d1b4",
+  "local_checksum_type": "SHA256",
+  "local_checksum": "6f745db1b4a0026ad837e74428f9ed6f3f77fa51eb6f858b58ebdbc186fdb3bd",
+  "retrieved_at": "2026-09-23T13:58:33Z"
+}

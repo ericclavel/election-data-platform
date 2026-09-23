@@ -44,9 +44,16 @@ US_HOUSE = DatasetConfig(
     file_prefix="1976-2024-house",
 )
 
+US_SENATE = DatasetConfig(
+    source="mit_election_lab",
+    dataset="us_senate",
+    dataset_doi="doi:10.7910/DVN/PEJ5QU",
+    file_prefix="1976-2024-senate-state",
+)
 
 
 DATASETS = [
     COUNTY_PRESIDENTIAL,
     US_HOUSE,
+    US_SENATE,
 ]
