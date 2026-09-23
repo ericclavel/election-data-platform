@@ -1,0 +1,33 @@
+current working though process
+
+                    SOURCE / INGESTION LAYER
+
+        National / consolidated                 State / fragmented
+        sources                                 sources
+        ───────────────────                     ───────────────────
+        MEDSL national datasets                 CA source adapter
+        other national sources                  MN source adapter
+                │                               TX source adapter
+                │                               ...
+                │                                      │
+                └──────────────┬───────────────────────┘
+                               ↓
+
+                         RAW SOURCE LAYER
+                    preserve source exactly
+                               ↓
+
+                       STANDARDIZATION LAYER
+                  source-specific interpretation
+                               ↓
+              ┌────────────────┼────────────────┐
+              ↓                ↓                ↓
+          elections        candidates       geography
+              ↓                ↓                ↓
+
+                      CANONICAL TRANSFORM LAYER
+                               ↓
+               unified election/result models
+                               ↓
+
+                   ANALYTICS / SERVING LAYER
