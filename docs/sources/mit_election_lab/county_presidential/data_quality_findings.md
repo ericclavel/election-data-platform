@@ -321,3 +321,28 @@ The following findings may affect future staging and modeling decisions:
 * What canonical grain should the platform use once multiple election datasets are compared?
 
 These questions should be revisited during staging and cross-dataset schema design rather than resolved through modification of the raw source.
+
+
+
+## Presidential codebook:
+- coverage matches the current 2000–2024 dataset
+- last-updated date predates the current dataset release
+- documents important source-selection behavior:
+  - typically retains Democrat, Republican, and Libertarian candidates
+  - some additional candidate returns may be omitted
+- documents a known Alaska 2004 vote-quality issue
+- documents special Alaska handling in county_fips
+- does not fully document all county_fips anomalies observed in the data
+- useful and substantially current, but still requires empirical validation
+
+
+## Presidential sources reference file:
+- source-provided provenance/reference artifact
+- appears specific to 2020 source acquisition
+- covers all 50 states plus D.C.
+- records state-level election source URLs
+- includes certification/status, free-text notes,
+  and missing-vote indicators
+- categorical values are not standardized
+- does not document provenance for the full 2000–2024 series
+- should be preserved raw and version-tracked independently

@@ -319,7 +319,7 @@ def ingest_dataset(config):
     )
 
     current_metadata = load_current_metadata(
-        config.current_metadata_path
+        config.data_metadata_path
     )
 
     if source_has_changed(
@@ -376,7 +376,7 @@ def ingest_dataset(config):
     }
 
     save_current_metadata(
-        config.current_metadata_path,
+        config.data_metadata_path,
         new_current_metadata
     )
 
