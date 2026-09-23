@@ -24,7 +24,7 @@ class DatasetConfig:
             Path("data/metadata")
             / self.source
             / self.dataset
-            / "current.json"
+            / "data.json"
         )
 
 
