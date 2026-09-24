@@ -32,6 +32,22 @@ class DatasetConfig:
             / "data.json"
         )
 
+    @property
+    def reference_data_dir(self) -> Path:
+        return (
+            Path("data/reference")
+            / self.source
+            / self.dataset
+        )
+
+    def reference_metadata_path(self, asset_name: str) -> Path:
+        return (
+            Path("data/metadata")
+            / self.source
+            / self.dataset
+            / "reference"
+            / f"{asset_name}.json"
+        )
 
 
 
