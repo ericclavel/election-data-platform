@@ -369,13 +369,39 @@ def sync_reference_assets(config):
             current_metadata
         ):
             logging.info(
-                "Reference asset has changed. Proceeding with synchronization."
+                "Reference content has changed. Proceeding with synchronization."
             )
 
         else:
-            logging.info(
-                "Reference asset has not changed. No synchronization needed."
+            if reference_metadata_has_changed(
+                remote_reference_info,
+                current_metadata
+            ):
+                logging.info(
+                    "Reference metadata has changed.  Updating metadata only"
+                )
+
+                updated_metadata = current_metadata.copy()
+
+                updated_metadata["dataset_version"] = (
+                    remote_reference_info["dataset_version"]
+                )
+                updated_metadata["file_id"] = remote_reference_info["file_id"]
+                updated_metadata["label"] = remote_reference_info["label"]
+                updated_metadata["original_file_name"] = (
+                    remote_reference_info["original_file_name"]
+                )
+                updated_metadata["file_size"] = remote_reference_info["file_size"]
+
+                save_current_metadata(
+                    config.reference_metadata_path(reference_asset.name),
+                    updated_metadata,
             )
+
+            else:
+                logging.info(
+                    "Reference content and metadata have not changed."
+                )
             continue
 
         signed_url = request_signed_url(
@@ -429,3 +455,14 @@ def sync_reference_assets(config):
             config.reference_metadata_path(reference_asset.name),
             new_reference_metadata
         )
+
+
+def main():
+    configure_logging()
+    validate_config()
+
+    for config in DATASETS:
+        sync_reference_assets(config)
+
+if __name__=="__main__":
+    main()
