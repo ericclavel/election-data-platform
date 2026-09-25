@@ -88,20 +88,344 @@ def get_remote_reference_info(metadata, reference_asset):
         elif reference_asset.match_field == "originalFileName":
             match_value = data_file.get("originalFileName") or ""
 
+        else:
+            raise ValueError(
+                f"Unsupported match_field: {reference_asset.match_field}"
+            )
+
         if match_value.startswith(reference_asset.file_prefix):
             return {
+                "label": file_info.get("label"),
+                "original_file_name": data_file.get("originalFileName"),
                 "dataset_version": dataset_version,
                 "file_id": data_file.get("id"),
                 "file_name": file_name,
-                "file_size": data_file.get("originalFileSize"),
+                "file_size": (
+                    data_file.get("originalFileSize")
+                    or data_file.get("filesize")
+                ),
                 "dataverse_checksum_type": data_file.get("checksum", {}).get("type"),
                 "dataverse_checksum": data_file.get("checksum", {}).get("value"),
             }
 
-
-
-##for reference_asset in config.reference_assets:
-    remote_reference_info = get_remote_reference_info(
-        metadata,
-        reference_asset,
+    raise ValueError(
+        f"No source file found with prefix: {reference_asset.file_prefix}"
     )
+
+
+
+def load_current_metadata(path):
+    if not path.exists():
+        return {}
+
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+
+def reference_content_has_changed(remote, current):
+    if not current:
+        logging.info("Change detected: no current metadata.")
+        return True
+
+    if (
+        remote["dataverse_checksum_type"]
+        != current.get("dataverse_checksum_type")
+    ):
+        logging.info("Change detected: checksum type")
+        return True
+
+    if (
+        remote["dataverse_checksum"]
+        != current.get("dataverse_checksum")
+    ):
+        logging.info("Change detected: checksum")
+        return True
+
+    return False
+
+
+
+def reference_metadata_has_changed(remote, current):
+    if remote["dataset_version"] != current.get("dataset_version"):
+        return True
+
+    if remote["file_id"] != current.get("file_id"):
+        return True
+
+    if remote["label"] != current.get("label"):
+        return True
+
+    if remote["original_file_name"] != current.get("original_file_name"):
+        return True
+
+    if remote["file_size"] != current.get("file_size"):
+        return True
+
+    return False
+
+
+
+def request_signed_url(file_id, api_token):
+    url = (
+        f"{DATAVERSE_BASE_URL}/api/access/datafile/{file_id}"
+        "?format=original"
+    )
+
+    payload = {
+        "guestbookResponse": {
+            "answers": []
+        }
+    }
+
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "X-Dataverse-key": api_token,
+            "Content-Type": "application/json",
+            "User-Agent": "election-data-platform/1.0",
+
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            response_data = json.load(response)
+
+        return response_data["data"]["signedUrl"]
+
+    except urllib.error.HTTPError as error:
+        error_body = error.read().decode("utf-8", errors="replace")
+
+        raise RuntimeError(
+            f"Signed URL request failed "
+            f"(HTTP {error.code}): {error_body}"
+        ) from error
+
+    except urllib.error.URLError as error:
+        raise RuntimeError(
+            f"Could not connect to Dataverse: {error.reason}"
+        ) from error
+
+
+
+
+def build_destination_path(reference_data_dir, dataset_version, file_name):
+    return reference_data_dir / dataset_version / file_name
+
+
+
+
+def validate_download(path, expected_size):
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Downloaded file does not exist: {path}"
+        )
+
+    if not path.is_file():
+        raise ValueError(
+            f"Download path is not a file: {path}"
+        )
+
+    actual_size = path.stat().st_size
+
+    if actual_size == 0:
+        raise ValueError(
+            f"Downloaded file is empty: {path}"
+        )
+
+    if expected_size is not None and actual_size != expected_size:
+        raise ValueError(
+            f"Downloaded file size mismatch: "
+            f"expected {expected_size} bytes, got {actual_size} bytes."
+        )
+
+
+
+
+def calculate_md5(path):
+    md5_hash = hashlib.md5()
+
+    with path.open("rb") as file:
+        for byte_block in iter(lambda: file.read(4096), b""):
+            md5_hash.update(byte_block)
+
+    return md5_hash.hexdigest()
+
+
+def validate_checksum(path, expected_checksum):
+    actual_checksum = calculate_md5(path)
+
+    if actual_checksum != expected_checksum:
+        raise ValueError(
+            f"Checksum mismatch: "
+            f"expected {expected_checksum}, got {actual_checksum}"
+        )
+
+
+
+
+
+def download_file(signed_url, destination_path):
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+    temp_path = destination_path.with_suffix(
+        destination_path.suffix + ".part"
+    )
+
+    request = urllib.request.Request(
+        signed_url,
+        headers={
+            "User-Agent": "election-data-platform/1.0",
+        }
+    )
+
+    try:
+        with urllib.request.urlopen(request) as response:
+            with temp_path.open("wb") as file:
+                file.write(response.read())
+
+        temp_path.replace(destination_path)
+
+    except urllib.error.HTTPError as error:
+        temp_path.unlink(missing_ok=True)
+
+        error_body = error.read().decode("utf-8", errors="replace")
+
+        raise RuntimeError(
+            f"File download failed "
+            f"(HTTP {error.code}): {error_body}"
+        ) from error
+
+    except urllib.error.URLError as error:
+        temp_path.unlink(missing_ok=True)
+
+        raise RuntimeError(
+            f"Could not connect to Dataverse: {error.reason}"
+        ) from error
+
+    except OSError as error:
+        temp_path.unlink(missing_ok=True)
+
+        raise RuntimeError(
+            f"Could not write downloaded file to {destination_path}: {error}"
+        ) from error
+
+
+
+def calculate_sha256(path):
+    sha256_hash = hashlib.sha256()
+
+    with path.open("rb") as file:
+        for byte_block in iter(lambda: file.read(4096), b""):
+            sha256_hash.update(byte_block)
+
+    return sha256_hash.hexdigest()
+
+
+
+def save_current_metadata(path, metadata):
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(metadata, file, indent=2)
+
+
+
+
+def configure_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(levelname)s | %(message)s",
+    )
+
+
+
+
+def sync_reference_assets(config):
+    dataverse_api_url = build_metadata_url(
+        config.dataset_doi
+    )
+
+    metadata = fetch_dataset_metadata(
+        dataverse_api_url,
+        API_TOKEN,
+    )
+
+    for reference_asset in config.reference_assets:
+        remote_reference_info = get_remote_reference_info(
+            metadata,
+            reference_asset,
+        )
+
+        current_metadata = load_current_metadata(
+        config.reference_metadata_path(reference_asset.name)
+        )
+
+        if reference_content_has_changed(
+            remote_reference_info,
+            current_metadata
+        ):
+            logging.info(
+                "Reference asset has changed. Proceeding with synchronization."
+            )
+
+        else:
+            logging.info(
+                "Reference asset has not changed. No synchronization needed."
+            )
+            continue
+
+        signed_url = request_signed_url(
+            remote_reference_info["file_id"],
+            API_TOKEN
+        )
+
+        destination_path = build_destination_path(
+            config.reference_data_dir,
+            remote_reference_info["dataset_version"],
+            remote_reference_info["file_name"]
+        )
+
+        download_file(
+            signed_url,
+            destination_path,
+        )
+
+        logging.info("Validating downloaded file...")
+        validate_download(
+        destination_path,
+        remote_reference_info["file_size"]
+        )
+        logging.info("Downloaded file validation passed.")
+
+        logging.info("Validating Dataverse checksum...")
+        validate_checksum(
+            destination_path,
+            remote_reference_info["dataverse_checksum"]
+        )
+        logging.info("Dataverse checksum validation passed.")
+        local_checksum = calculate_sha256(destination_path)
+
+        new_reference_metadata = {
+            "asset_name": reference_asset.name,
+            "dataset_doi": config.dataset_doi,
+            "dataset_version": remote_reference_info["dataset_version"],
+            "file_id": remote_reference_info["file_id"],
+            "file_name": remote_reference_info["file_name"],
+            "label": remote_reference_info["label"],
+            "original_file_name": remote_reference_info["original_file_name"],
+            "file_size": remote_reference_info["file_size"],
+            "dataverse_checksum_type": remote_reference_info["dataverse_checksum_type"],
+            "dataverse_checksum": remote_reference_info["dataverse_checksum"],
+            "local_checksum_type": "SHA256",
+            "local_checksum": local_checksum,
+            "retrieved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+        save_current_metadata(
+            config.reference_metadata_path(reference_asset.name),
+            new_reference_metadata
+        )
