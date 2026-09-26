@@ -2,389 +2,270 @@
 
 ## Purpose
 
-The ingestion subsystem is responsible for retrieving raw source data, validating downloaded files, preserving source data without transformation, and recording the most recently validated source state.
+The ingestion subsystem retrieves primary source data and source-provided reference assets such as codebooks and provenance files.
+
+It is responsible for:
+
+* Querying upstream metadata
+* Locating configured source and reference files
+* Detecting upstream changes
+* Downloading original files when required
+* Validating file size and upstream checksums
+* Calculating local SHA-256 fingerprints
+* Preserving validated files without transformation
+* Recording current upstream and local file state
 
 Ingestion is intentionally separated from downstream schema normalization, cleaning, transformation, and analytical modeling.
 
-## Responsibilities
+## Configuration
 
-The ingestion layer is responsible for:
-
-* Loading configured datasets
-* Querying upstream source metadata
-* Identifying the current published source version
-* Locating the expected source file
-* Detecting whether the upstream source has changed
-* Requesting authorized source-file access when required
-* Downloading the original source file
-* Validating file size
-* Verifying the upstream checksum
-* Calculating a local SHA-256 fingerprint
-* Persisting validated raw files
-* Updating local ingestion metadata only after successful validation
-
-The ingestion layer does not modify or normalize raw source values.
-
-## Dataset Configuration
-
-Datasets are defined in:
+Dataset and reference-asset configuration is defined in:
 
 ```text
 ingestion/config.py
 ```
 
-Each dataset uses a `DatasetConfig` dataclass containing the configuration required by the shared ingestion process.
-
-Current configuration fields include:
+Each dataset is represented by a `DatasetConfig`:
 
 ```text
 source
 dataset
 dataset_doi
 file_prefix
+reference_assets
 ```
 
-Dataset-specific storage paths are derived from the source and dataset names rather than being repeated in each configuration.
-
-For example:
+Optional source-provided reference files are represented by `ReferenceAsset`:
 
 ```text
-data/raw/<source>/<dataset>/
-data/metadata/<source>/<dataset>/current.json
+name
+match_field
+file_prefix
 ```
+
+`match_field` identifies which upstream metadata field is used to locate the asset, such as Dataverse `label` or `originalFileName`.
 
 Configured datasets are collected in `DATASETS`.
 
-Conceptually:
+`DatasetConfig` also derives storage paths for:
 
 ```text
-DatasetConfig
-      ↓
-individual dataset configurations
-      ↓
-DATASETS
-      ↓
-main()
-      ↓
-ingest_dataset(config)
+raw_data_dir
+data_metadata_path
+reference_data_dir
+reference_metadata_path(asset_name)
 ```
 
-This allows the same ingestion workflow to process multiple datasets without duplicating ingestion logic.
+This keeps source-specific identifiers and storage conventions centralized rather than duplicated across ingestion scripts.
 
 ## Execution
 
-The ingestion service is run through Docker Compose from the project root:
+Primary-data ingestion:
 
 ```bash
 docker compose up --build ingestion
 ```
 
-Docker provides the Python environment, dependencies, and ingestion code.
+Reference-asset synchronization:
 
-Environment variables are supplied to the container at runtime through the project's `.env` file.
+```bash
+docker compose up --build reference-sync
+```
 
-The container runs using the host development user's UID and GID so files created through the bind-mounted `data/` directory remain writable by the host user rather than being created as root-owned files.
+Both services use the same project image, dependencies, credentials, and bind-mounted `data/` directory while running separate ingestion workflows.
 
-## Multi-Dataset Orchestration
+Environment variables are supplied through the project `.env` file.
 
-`main()` acts as the application-level ingestion orchestrator.
+The containers run using the host development user's UID and GID so bind-mounted files remain writable by the host user.
 
-It performs shared startup configuration and then iterates through the configured datasets:
+## Workflow
+
+Both scripts follow the same general orchestration pattern:
 
 ```text
 main()
   ↓
 configure logging
   ↓
-validate shared configuration
+validate configuration
   ↓
 iterate through DATASETS
   ↓
+run script-specific workflow
+```
+
+Primary data is processed by:
+
+```text
 ingest_dataset(config)
 ```
 
-`ingest_dataset(config)` performs the complete ingestion workflow for one dataset.
-
-If one dataset has not changed, that dataset exits its ingestion function successfully and processing continues to the next configured dataset.
-
-For example:
+Reference assets are processed by:
 
 ```text
-county_presidential
+sync_reference_assets(config)
   ↓
-unchanged → skip
-
-us_house
-  ↓
-changed → ingest
+iterate through config.reference_assets
 ```
 
-This allows each configured dataset to maintain and evaluate its source state independently.
-
-## Ingestion Workflow
-
-For each configured dataset:
+The shared high-level acquisition flow is:
 
 ```text
-Dataset configuration
-      ↓
-Query current published source metadata
-      ↓
-Locate target source file
-      ↓
-Load locally recorded source metadata
-      ↓
-Compare remote and local source state
-      ↓
-Source unchanged?
-├── Yes → Return successfully for this dataset
-└── No
-     ↓
-Request source-file access
-     ↓
-Download original source file
-     ↓
-Validate downloaded file
-     ↓
-Verify upstream checksum
-     ↓
-Calculate local SHA-256 fingerprint
-     ↓
-Persist validated raw source
-     ↓
-Update local ingestion metadata
-     ↓
-Continue to next configured dataset
+query upstream metadata
+        ↓
+locate configured file
+        ↓
+load locally recorded state
+        ↓
+compare remote and local state
+        ↓
+determine required action
+        ↓
+download when required
+        ↓
+validate size and upstream checksum
+        ↓
+calculate local SHA-256
+        ↓
+persist validated file
+        ↓
+update local metadata
 ```
 
-## Source Change Detection
+Each dataset and reference asset is evaluated independently so unchanged items can be skipped without preventing remaining items from being checked.
 
-Each dataset maintains local metadata describing the most recently validated upstream source.
+## Change Detection
 
-The ingestion process compares the current upstream metadata against the locally recorded state.
+Primary-data ingestion treats changes to the configured source state as requiring ingestion.
 
-Relevant comparison fields currently include:
+Compared fields include:
 
 * Dataset version
 * File ID
 * File name
 * Upstream checksum type
-* Upstream checksum value
+* Upstream checksum
 
-If no relevant source metadata has changed, ingestion skips downloading that dataset again.
-
-Example:
+Reference assets are synchronized more granularly because upstream metadata can change without the underlying file contents changing:
 
 ```text
-INFO | Checking dataset: county_presidential
-INFO | Source has not changed. No ingestion needed.
+content checksum changed
+→ download, validate, and update metadata
+
+remote metadata changed only
+→ update metadata without downloading again
+
+no change
+→ skip
 ```
 
-If no local metadata exists, the dataset is treated as requiring ingestion.
+This allows fields such as dataset version, file ID, and Dataverse label to evolve independently from the reference file contents.
 
-Example:
+## Validation and Safe Downloads
 
-```text
-INFO | Checking dataset: us_house
-INFO | Change detected: no current metadata.
-INFO | Source has changed. Proceeding with ingestion.
-```
+Downloaded files must:
 
-If existing source metadata has changed, ingestion also proceeds with download and validation.
-
-Example:
-
-```text
-INFO | Change detected: dataset_version (20.0 -> 21.0)
-INFO | Source has changed. Proceeding with ingestion.
-```
-
-## Download Validation
-
-Downloaded files are validated before local ingestion metadata is updated.
-
-### File Validation
-
-The downloaded source file must:
-
-* Exist
-* Be a regular file
+* Exist as regular files
 * Be non-empty
-* Match the original file size reported by the upstream source when available
+* Match the upstream file size when available
+* Match the upstream checksum
 
-Example:
+Current Dataverse files use MD5 as the upstream checksum.
 
-```text
-INFO | Validating downloaded file...
-INFO | Downloaded file validation passed.
-```
+After upstream validation succeeds, the ingestion process records a local SHA-256 fingerprint.
 
-### Upstream Checksum Validation
+Downloads are first written to a temporary `.part` file and moved to their final destination only after the download completes successfully. Failed partial downloads are removed.
 
-The local download is verified against the checksum reported by the upstream source.
+Local ingestion state is not advanced when required download or validation steps fail.
 
-For the current Dataverse sources, this is an MD5 checksum associated with the original source file.
+## Storage and Metadata
 
-Example:
+Primary source files:
 
 ```text
-INFO | Validating Dataverse checksum...
-INFO | Dataverse checksum validation passed.
+data/raw/<source>/<dataset>/<dataset_version>/
 ```
 
-### Local Fingerprint
-
-After upstream validation succeeds, the ingestion process calculates a local SHA-256 fingerprint.
-
-The upstream checksum and local fingerprint serve different purposes:
-
-* Upstream checksum — verifies that the downloaded file matches the source-provided file
-* Local SHA-256 — provides a strong local fingerprint for the persisted raw file
-
-## Safe Downloads
-
-Downloads are written to a temporary `.part` file before being moved to their final destination.
-
-Conceptually:
+Reference assets:
 
 ```text
-source_file.csv.part
-        ↓
-download completes
-        ↓
-validation succeeds
-        ↓
-source_file.csv
+data/reference/<source>/<dataset>/<dataset_version>/
 ```
 
-If the download fails, the partial file is removed and the final destination is not replaced.
+Files are preserved in their original source format rather than converted for downstream convenience.
 
-This prevents incomplete downloads from appearing as successfully ingested source files.
-
-## Metadata Updates
-
-Local ingestion metadata is stored under:
+Primary-data metadata:
 
 ```text
-data/metadata/<source>/<dataset>/current.json
+data/metadata/<source>/<dataset>/data.json
 ```
 
-Each dataset maintains its own `current.json`.
+Reference-asset metadata:
 
-The metadata record represents the most recent upstream source that was successfully downloaded and validated locally.
+```text
+data/metadata/<source>/<dataset>/reference/<asset_name>.json
+```
 
-A typical metadata record contains information such as:
+Metadata may include:
 
 ```text
 dataset DOI
 dataset version
 file ID
 file name
-upstream checksum type
+Dataverse label
+original file name
+file size
 upstream checksum
 local SHA-256 fingerprint
 retrieval timestamp
 ```
 
-`current.json` must not be updated if download or validation fails.
-
-## Raw Data Storage
-
-Validated source files are stored under:
-
-```text
-data/raw/<source>/<dataset>/<dataset_version>/
-```
-
-Raw files are preserved in their original source format.
-
-Examples may include:
-
-```text
-.csv
-.tab
-.tsv
-```
-
-The ingestion layer should not convert source formats simply to make downstream processing more convenient.
-
-## Expected Logging
-
-Because ingestion processes datasets independently, logs identify the dataset currently being checked.
-
-### No Source Change
-
-A normal multi-dataset no-op run may resemble:
-
-```text
-INFO | Checking dataset: county_presidential
-INFO | Source has not changed. No ingestion needed.
-INFO | Checking dataset: us_house
-INFO | Source has not changed. No ingestion needed.
-```
-
-This indicates that both upstream sources were checked successfully and match their locally recorded states.
-
-### Source Change Detected
-
-A successful update path may resemble:
-
-```text
-INFO | Checking dataset: us_house
-INFO | Change detected: no current metadata.
-INFO | Source has changed. Proceeding with ingestion.
-INFO | Validating downloaded file...
-INFO | Downloaded file validation passed.
-INFO | Validating Dataverse checksum...
-INFO | Dataverse checksum validation passed.
-```
+Separating metadata by asset allows primary data, codebooks, and provenance files to evolve independently.
 
 ## Failure Behavior
 
-The ingestion process is designed to fail before advancing local source state when required validation does not succeed.
+Ingestion fails rather than advancing local state when required operations do not complete successfully.
 
 Failures may include:
 
-* Upstream HTTP errors
-* Network connection failures
+* Upstream or network errors
 * Authorization failures
-* Missing expected source files
-* Filesystem write failures
+* Missing expected files
+* Filesystem write errors
 * File-size mismatches
 * Checksum mismatches
 * Invalid or incomplete source metadata
 
-A failed ingestion must not update that dataset's `current.json`.
+This ensures that recorded local file state represents validated source content.
 
-This ensures that locally recorded ingestion state always represents a source file that completed the required validation process.
+## Environment
 
-## Environment Configuration
+Dataverse credentials are supplied through:
 
-Required credentials are supplied through the project `.env` file.
+```text
+.env
+```
 
-For Dataverse ingestion:
+using:
 
 ```text
 DATAVERSE_API_TOKEN=<your-token>
 ```
 
-The `.env` file:
+The `.env` file is excluded from Git and the Docker build context and is injected into the ingestion services at runtime.
 
-* Is not committed to Git
-* Is excluded from the Docker build context
-* Is injected into the ingestion container at runtime
+Required variables are documented in `.env.example`.
 
-Required environment variables are documented in the root `.env.example`.
+## Source Documentation
 
-## Source-Specific Documentation
-
-Dataset-specific source behavior is documented separately under:
+Dataset-specific documentation is stored under:
 
 ```text
 docs/sources/<source>/<dataset>/
 ```
 
-Each dataset directory contains:
+Each dataset currently contains:
 
 ```text
 README.md
@@ -392,23 +273,26 @@ source_schema.md
 data_quality_findings.md
 ```
 
-The ingestion README documents shared ingestion behavior rather than duplicating source-specific metadata.
+Documentation responsibilities are intentionally separated:
 
-## Adding New Datasets
+```text
+ingestion/README.md
+→ shared ingestion architecture and behavior
 
-New datasets should be added through the shared configuration system rather than by creating independent ingestion implementations.
+dataset README.md
+→ source identity, coverage, source-specific metadata, and available reference assets
 
-For datasets compatible with the existing Dataverse ingestion workflow, adding a dataset primarily requires defining a new `DatasetConfig` instance and including it in `DATASETS`.
+source_schema.md
+→ observed source schema and field behavior
 
-Current per-dataset configuration includes:
+data_quality_findings.md
+→ source-specific anomalies and empirical findings
+```
 
-* Source identifier
-* Dataset identifier
-* Dataset DOI
-* Source-file selector
+Shared behavior such as Docker execution, storage conventions, synchronization logic, checksum validation, metadata layout, and reference-asset handling is documented here rather than repeated in individual dataset READMEs.
 
-Shared behavior such as metadata retrieval, metadata comparison, downloading, validation, checksum verification, fingerprinting, and state updates remains reusable across configured datasets.
+Datasets compatible with the existing Dataverse workflow are added by defining a `DatasetConfig`, configuring any associated `ReferenceAsset` entries, and adding the dataset to `DATASETS`.
 
-Source-specific interpretation of downloaded data remains outside the shared ingestion layer.
+Source interpretation and normalization remain outside the ingestion layer.
 
-Additional ingestion abstractions should be introduced only when differences observed across real sources demonstrate that they are necessary.
+New ingestion abstractions should be introduced only when differences observed across real sources justify them.

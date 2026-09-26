@@ -361,3 +361,22 @@ Downstream staging/modeling should account for the following:
 * Can a stable election-event identifier be constructed once this Senate source is compared with House and presidential source structures?
 * Should downstream staging introduce standardized election-stage concepts while retaining the original source stage alongside them?
 * What surrogate-key strategy should be used for result lines that have no stable descriptive natural key?
+
+
+## Source codebook freshness:
+- Current Dataverse codebook asset is labeled for 1976–2024,
+  but its contents still describe U.S. Senate returns through 2018.
+- Several documented categorical conventions do not match values
+  observed in the current 1976–2024 data.
+- Source codebooks should therefore be preserved and version-tracked,
+  but should not be assumed to fully describe the current data without
+  empirical validation.
+
+
+  Senate sources reference file:
+- source-provided provenance/reference artifact
+- appears focused on 2020 Senate result acquisition
+- records state-level source URLs, certification/status notes,
+  free-text data-quality notes, and missing-vote indicators
+- categorical values are not standardized
+- should be preserved raw and version-tracked independently

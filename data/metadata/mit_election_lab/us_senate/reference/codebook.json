@@ -1,0 +1,15 @@
+{
+  "asset_name": "codebook",
+  "dataset_doi": "doi:10.7910/DVN/PEJ5QU",
+  "dataset_version": "8.0",
+  "file_id": 6708560,
+  "file_name": "codebook-us-senate-1976\u20132024.md",
+  "label": "codebook-us-senate-1976\u20132024.md",
+  "original_file_name": null,
+  "file_size": 3700,
+  "dataverse_checksum_type": "MD5",
+  "dataverse_checksum": "1cab4bc42b0ca632223b9b9a90c65f30",
+  "local_checksum_type": "SHA256",
+  "local_checksum": "221ca02977af4f2d3803340eab798cd9d09830e3b2c5254e700e0b2b45637333",
+  "retrieved_at": "2026-09-26T16:40:07Z"
+}

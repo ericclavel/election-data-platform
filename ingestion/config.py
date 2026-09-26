@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-
+@dataclass(frozen=True)
+class ReferenceAsset:
+    name: str
+    match_field: str
+    file_prefix: str
 
 @dataclass(frozen=True)
 class DatasetConfig:
@@ -12,6 +16,7 @@ class DatasetConfig:
     dataset: str
     dataset_doi: str
     file_prefix: str
+    reference_assets: tuple[ReferenceAsset, ...] = ()
 
 
     @property
@@ -19,14 +24,30 @@ class DatasetConfig:
         return Path("data/raw") / self.source / self.dataset
 
     @property
-    def current_metadata_path(self) -> Path:
+    def data_metadata_path(self) -> Path:
         return(
             Path("data/metadata")
             / self.source
             / self.dataset
-            / "current.json"
+            / "data.json"
         )
 
+    @property
+    def reference_data_dir(self) -> Path:
+        return (
+            Path("data/reference")
+            / self.source
+            / self.dataset
+        )
+
+    def reference_metadata_path(self, asset_name: str) -> Path:
+        return (
+            Path("data/metadata")
+            / self.source
+            / self.dataset
+            / "reference"
+            / f"{asset_name}.json"
+        )
 
 
 
@@ -35,20 +56,51 @@ COUNTY_PRESIDENTIAL = DatasetConfig(
     dataset="county_presidential",
     dataset_doi="doi:10.7910/DVN/VOQCHQ",
     file_prefix="countypres_",
+    reference_assets=(
+        ReferenceAsset(
+            name="codebook",
+            match_field="label",
+            file_prefix="County Presidential Returns",
+        ),
+        ReferenceAsset(
+            name="sources",
+            match_field="originalFileName",
+            file_prefix="sources-president",
+        ),
+    )
 )
 
 US_HOUSE = DatasetConfig(
     source="mit_election_lab",
     dataset="us_house",
     dataset_doi="doi:10.7910/DVN/IG0UN2",
-    file_prefix="1976-2024-house",
+    file_prefix="1976-",
+    reference_assets=(
+        ReferenceAsset(
+            name="codebook",
+            match_field="label",
+            file_prefix="codebook-us-house",
+        ),
+    )
 )
 
 US_SENATE = DatasetConfig(
     source="mit_election_lab",
     dataset="us_senate",
     dataset_doi="doi:10.7910/DVN/PEJ5QU",
-    file_prefix="1976-2024-senate-state",
+    file_prefix="1976-",
+    reference_assets=(
+        ReferenceAsset(
+            name="codebook",
+            match_field="label",
+            file_prefix="codebook-us-senate",
+        ),
+        ReferenceAsset(
+            name="sources",
+            match_field="originalFileName",
+            file_prefix="sources-senate",
+        ),
+    ),
 )
 
 

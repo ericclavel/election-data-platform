@@ -510,3 +510,11 @@ Future staging/modeling should account for the following:
 6. Should future standardized models classify non-person candidate values through a dedicated result-line/category field rather than overloading the candidate dimension?
 7. Does the current source version provide any hidden/source-level identifier that distinguishes repeated generic write-in reporting lines?
 
+## House codebook:
+- current coverage matches the 1976–2024 dataset
+- substantially more current than the Senate codebook
+- documents at-large district coding and fusion-ticket behavior
+- documents uncontested-race handling using candidatevotes = 1
+- does not document observed -1 sentinel values
+- contains some internal casing inconsistencies
+- generally useful, but still requires empirical validation against the data

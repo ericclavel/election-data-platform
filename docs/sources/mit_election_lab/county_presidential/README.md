@@ -78,3 +78,15 @@ The source file is retrieved through the Harvard Dataverse API using the origina
 Before the local ingestion metadata is updated, the pipeline validates the downloaded file against the original file size and MD5 checksum reported by Dataverse. A local SHA-256 fingerprint is then calculated and recorded in `current.json`.
 
 Raw source data is preserved without transformation. Schema normalization, type casting, cleaning, and analytical modeling occur downstream.
+
+
+
+## Reference Assets
+
+The source provides:
+
+* Dataset codebook
+* State-level source-provenance file
+
+Reference assets are synchronized and versioned by the shared ingestion
+workflow documented in `ingestion/README.md`.

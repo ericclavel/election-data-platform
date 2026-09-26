@@ -108,3 +108,15 @@ The ingestion process:
 9. Updates `current.json` only after successful validation.
 
 Raw source values are preserved during ingestion. Source-specific interpretation and normalization are intentionally deferred to later staging/modeling work.
+
+
+
+## Reference Assets
+
+The source provides:
+
+* Dataset codebook
+* Source-provenance file
+
+Reference assets are synchronized and versioned by the shared ingestion
+workflow documented in `ingestion/README.md`.

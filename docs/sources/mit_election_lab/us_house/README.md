@@ -100,3 +100,14 @@ Several source characteristics are important for future ingestion:
 * Raw files should remain versioned and immutable so future source releases can be compared with the currently ingested version.
 
 The manual source-acquisition workflow used during inspection demonstrated that the Dataverse endpoint can provide a temporary signed URL for downloading the original file. Signed URLs are temporary and should be requested immediately before download rather than stored for reuse.
+
+
+
+## Reference Assets
+
+The source provides:
+
+* Dataset codebook
+
+Reference assets are synchronized and versioned by the shared ingestion
+workflow documented in `ingestion/README.md`.

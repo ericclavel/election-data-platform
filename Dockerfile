@@ -8,5 +8,6 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 COPY ingestion/ingest_data.py ./ingest_data.py
+COPY ingestion/sync_reference_assets.py ./sync_reference_assets.py
 COPY ingestion/config.py ./config.py
 ENTRYPOINT ["python", "ingest_data.py"]

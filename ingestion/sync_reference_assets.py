@@ -2,6 +2,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 from dotenv import load_dotenv
 from config import DATASETS
+
 import urllib.request
 import urllib.error
 import json
@@ -15,13 +16,15 @@ load_dotenv()
 DATAVERSE_BASE_URL = "https://dataverse.harvard.edu"
 API_TOKEN = os.environ.get("DATAVERSE_API_TOKEN")
 
+
 def validate_config():
     if not API_TOKEN:
         raise ValueError(
             "DATAVERSE_API_TOKEN environment variable is not set."
         )
 
-    
+
+
 def build_metadata_url(dataset_doi):
     params = {
         "persistentId": dataset_doi,
@@ -32,6 +35,7 @@ def build_metadata_url(dataset_doi):
         f"{DATAVERSE_BASE_URL}/api/datasets/:persistentId/versions/:latest-published"
         f"?{urlencode(params)}"
     )
+
 
 
 def fetch_dataset_metadata(url, api_token):
@@ -62,8 +66,7 @@ def fetch_dataset_metadata(url, api_token):
 
 
 
-
-def get_remote_source_info(metadata, file_prefix):
+def get_remote_reference_info(metadata, reference_asset):
     dataset_info = metadata.get("data", {})
     files_info = dataset_info.get("files", [])
 
@@ -74,20 +77,39 @@ def get_remote_source_info(metadata, file_prefix):
 
     for file_info in files_info:
         data_file = file_info.get("dataFile", {})
-        file_name = data_file.get("originalFileName", "")
+        file_name = (
+            data_file.get("originalFileName", "")
+            or file_info.get("label")
+        )
 
-        if file_name.startswith(file_prefix):
+        if reference_asset.match_field == "label":
+            match_value = file_info.get("label", "")
+
+        elif reference_asset.match_field == "originalFileName":
+            match_value = data_file.get("originalFileName") or ""
+
+        else:
+            raise ValueError(
+                f"Unsupported match_field: {reference_asset.match_field}"
+            )
+
+        if match_value.startswith(reference_asset.file_prefix):
             return {
+                "label": file_info.get("label"),
+                "original_file_name": data_file.get("originalFileName"),
                 "dataset_version": dataset_version,
                 "file_id": data_file.get("id"),
                 "file_name": file_name,
-                "file_size": data_file.get("originalFileSize"),
+                "file_size": (
+                    data_file.get("originalFileSize")
+                    or data_file.get("filesize")
+                ),
                 "dataverse_checksum_type": data_file.get("checksum", {}).get("type"),
                 "dataverse_checksum": data_file.get("checksum", {}).get("value"),
             }
 
     raise ValueError(
-        f"No source file found with prefix: {file_prefix}"
+        f"No source file found with prefix: {reference_asset.file_prefix}"
     )
 
 
@@ -101,33 +123,43 @@ def load_current_metadata(path):
 
 
 
-def source_has_changed(remote, current):
+def reference_content_has_changed(remote, current):
     if not current:
         logging.info("Change detected: no current metadata.")
         return True
 
-    if remote["file_name"] != current.get("file_name"):
-        logging.info("Change detected: file_name")
+    if (
+        remote["dataverse_checksum_type"]
+        != current.get("dataverse_checksum_type")
+    ):
+        logging.info("Change detected: checksum type")
         return True
 
+    if (
+        remote["dataverse_checksum"]
+        != current.get("dataverse_checksum")
+    ):
+        logging.info("Change detected: checksum")
+        return True
+
+    return False
+
+
+
+def reference_metadata_has_changed(remote, current):
     if remote["dataset_version"] != current.get("dataset_version"):
-        logging.info(
-            "Change detected: dataset_version (%s -> %s)",
-            current.get("dataset_version"),
-            remote["dataset_version"],
-        )
         return True
 
     if remote["file_id"] != current.get("file_id"):
-        logging.info("Change detected: file_id")
         return True
 
-    if remote["dataverse_checksum_type"] != current.get("dataverse_checksum_type"):
-        logging.info("Change detected: dataverse_checksum_type")
+    if remote["label"] != current.get("label"):
         return True
 
-    if remote["dataverse_checksum"] != current.get("dataverse_checksum"):
-        logging.info("Change detected: dataverse_checksum")
+    if remote["original_file_name"] != current.get("original_file_name"):
+        return True
+
+    if remote["file_size"] != current.get("file_size"):
         return True
 
     return False
@@ -176,12 +208,14 @@ def request_signed_url(file_id, api_token):
         raise RuntimeError(
             f"Could not connect to Dataverse: {error.reason}"
         ) from error
-    
 
-    
 
-def build_destination_path(raw_data_dir,dataset_version, file_name):
-    return raw_data_dir / dataset_version / file_name
+
+
+def build_destination_path(reference_data_dir, dataset_version, file_name):
+    return reference_data_dir / dataset_version / file_name
+
+
 
 
 def validate_download(path, expected_size):
@@ -209,6 +243,8 @@ def validate_download(path, expected_size):
         )
 
 
+
+
 def calculate_md5(path):
     md5_hash = hashlib.md5()
 
@@ -229,7 +265,9 @@ def validate_checksum(path, expected_checksum):
         )
 
 
-    
+
+
+
 def download_file(signed_url, destination_path):
     destination_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -295,6 +333,8 @@ def save_current_metadata(path, metadata):
         json.dump(metadata, file, indent=2)
 
 
+
+
 def configure_logging():
     logging.basicConfig(
         level=logging.INFO,
@@ -303,7 +343,8 @@ def configure_logging():
 
 
 
-def ingest_dataset(config):
+
+def sync_reference_assets(config):
     dataverse_api_url = build_metadata_url(
         config.dataset_doi
     )
@@ -313,72 +354,107 @@ def ingest_dataset(config):
         API_TOKEN,
     )
 
-    remote_source_info = get_remote_source_info(
-        metadata,
-        config.file_prefix,
-    )
+    for reference_asset in config.reference_assets:
+        remote_reference_info = get_remote_reference_info(
+            metadata,
+            reference_asset,
+        )
 
-    current_metadata = load_current_metadata(
-        config.data_metadata_path
-    )
+        current_metadata = load_current_metadata(
+        config.reference_metadata_path(reference_asset.name)
+        )
 
-    if source_has_changed(
-        remote_source_info,
-        current_metadata
-    ):
-        logging.info("Source has changed. Proceeding with ingestion.")
-        
-    else:
-        logging.info("Source has not changed. No ingestion needed.")
-        return
+        if reference_content_has_changed(
+            remote_reference_info,
+            current_metadata
+        ):
+            logging.info(
+                "Reference content has changed. Proceeding with synchronization."
+            )
 
-    signed_url = request_signed_url(
-        remote_source_info["file_id"],
-        API_TOKEN
-    )
+        else:
+            if reference_metadata_has_changed(
+                remote_reference_info,
+                current_metadata
+            ):
+                logging.info(
+                    "Reference metadata has changed.  Updating metadata only"
+                )
 
-    destination_path = build_destination_path(
-        config.raw_data_dir,
-        remote_source_info["dataset_version"],
-        remote_source_info["file_name"]
-    )
+                updated_metadata = current_metadata.copy()
 
-    download_file(
-        signed_url,
-        destination_path
-    )
+                updated_metadata["dataset_version"] = (
+                    remote_reference_info["dataset_version"]
+                )
+                updated_metadata["file_id"] = remote_reference_info["file_id"]
+                updated_metadata["label"] = remote_reference_info["label"]
+                updated_metadata["original_file_name"] = (
+                    remote_reference_info["original_file_name"]
+                )
+                updated_metadata["file_size"] = remote_reference_info["file_size"]
 
-    logging.info("Validating downloaded file...")
-    validate_download(
-    destination_path,
-    remote_source_info["file_size"]
-    )
-    logging.info("Downloaded file validation passed.")
+                save_current_metadata(
+                    config.reference_metadata_path(reference_asset.name),
+                    updated_metadata,
+            )
 
-    logging.info("Validating Dataverse checksum...")
-    validate_checksum(
+            else:
+                logging.info(
+                    "Reference content and metadata have not changed."
+                )
+            continue
+
+        signed_url = request_signed_url(
+            remote_reference_info["file_id"],
+            API_TOKEN
+        )
+
+        destination_path = build_destination_path(
+            config.reference_data_dir,
+            remote_reference_info["dataset_version"],
+            remote_reference_info["file_name"]
+        )
+
+        download_file(
+            signed_url,
+            destination_path,
+        )
+
+        logging.info("Validating downloaded file...")
+        validate_download(
         destination_path,
-        remote_source_info["dataverse_checksum"]
-    )
-    logging.info("Dataverse checksum validation passed.")
-    local_checksum = calculate_sha256(destination_path)
+        remote_reference_info["file_size"]
+        )
+        logging.info("Downloaded file validation passed.")
 
-    new_current_metadata = {
-        "dataset_doi": config.dataset_doi,
-        "dataset_version": remote_source_info["dataset_version"],
-        "file_id": remote_source_info["file_id"],
-        "file_name": remote_source_info["file_name"],
-        "dataverse_checksum_type": remote_source_info["dataverse_checksum_type"],
-        "dataverse_checksum": remote_source_info["dataverse_checksum"],
-        "local_checksum_type": "SHA256",
-        "local_checksum": local_checksum,
-        "retrieved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+        logging.info("Validating Dataverse checksum...")
+        validate_checksum(
+            destination_path,
+            remote_reference_info["dataverse_checksum"]
+        )
+        logging.info("Dataverse checksum validation passed.")
+        local_checksum = calculate_sha256(destination_path)
 
-    save_current_metadata(
-        config.data_metadata_path,
-        new_current_metadata
-    )
+        new_reference_metadata = {
+            "asset_name": reference_asset.name,
+            "dataset_doi": config.dataset_doi,
+            "dataset_version": remote_reference_info["dataset_version"],
+            "file_id": remote_reference_info["file_id"],
+            "file_name": remote_reference_info["file_name"],
+            "label": remote_reference_info["label"],
+            "original_file_name": remote_reference_info["original_file_name"],
+            "file_size": remote_reference_info["file_size"],
+            "dataverse_checksum_type": remote_reference_info["dataverse_checksum_type"],
+            "dataverse_checksum": remote_reference_info["dataverse_checksum"],
+            "local_checksum_type": "SHA256",
+            "local_checksum": local_checksum,
+            "retrieved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+
+        save_current_metadata(
+            config.reference_metadata_path(reference_asset.name),
+            new_reference_metadata
+        )
 
 
 def main():
@@ -386,12 +462,7 @@ def main():
     validate_config()
 
     for config in DATASETS:
-        logging.info("Checking dataset: %s", config.dataset)
-        ingest_dataset(config)
+        sync_reference_assets(config)
 
-
-if __name__ == "__main__":
+if __name__=="__main__":
     main()
-
-
-

@@ -1,0 +1,15 @@
+{
+  "asset_name": "codebook",
+  "dataset_doi": "doi:10.7910/DVN/VOQCHQ",
+  "dataset_version": "20.0",
+  "file_id": 11723285,
+  "file_name": "County Presidential Returns 2000-2024.md",
+  "label": "County Presidential Returns 2000-2024.md",
+  "original_file_name": null,
+  "file_size": 2604,
+  "dataverse_checksum_type": "MD5",
+  "dataverse_checksum": "bb49e28faf9b18266665ab01dccf295f",
+  "local_checksum_type": "SHA256",
+  "local_checksum": "12447fa5e7a7a823bc4416f34a6c624313cc703b745fcbfb2fe64902d2b37c70",
+  "retrieved_at": "2026-09-26T16:40:03Z"
+}
