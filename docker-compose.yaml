@@ -6,3 +6,12 @@ services:
       - .env
     volumes:
       - ./data:/code/data
+
+  reference-sync:
+    build: .
+    user: "1000:1000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/code/data
+    entrypoint: ["python", "sync_reference_assets.py"]

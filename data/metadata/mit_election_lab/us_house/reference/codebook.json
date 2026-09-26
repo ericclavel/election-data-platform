@@ -1,0 +1,15 @@
+{
+  "asset_name": "codebook",
+  "dataset_doi": "doi:10.7910/DVN/IG0UN2",
+  "dataset_version": "15.0",
+  "file_id": 12066703,
+  "file_name": "codebook-us-house-1976\u20132024.md",
+  "label": "codebook-us-house-1976\u20132024.md",
+  "original_file_name": null,
+  "file_size": 5412,
+  "dataverse_checksum_type": "MD5",
+  "dataverse_checksum": "4ca4082f75b976b7245c00126615cd2f",
+  "local_checksum_type": "SHA256",
+  "local_checksum": "9bafc5369b50876c7581cd51d0c01f6166d71229503b3f4674a87189bca3b1ea",
+  "retrieved_at": "2026-09-26T16:40:05Z"
+}
